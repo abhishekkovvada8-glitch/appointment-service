@@ -1,36 +1,65 @@
-FROM python:3.13-slim
+# -----------------------------
+# Base Image
+# -----------------------------
+FROM python:3.12-slim
 
-# ---- Security hardening ----
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app
+# -----------------------------
+# Environment Variables
+# -----------------------------
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
 
-# ---- Create non-root user ----
+# -----------------------------
+# System Dependencies
+# -----------------------------
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# -----------------------------
+# Create Non-Root User
+# -----------------------------
 RUN useradd -m appuser
 
+# -----------------------------
+# Set Working Directory
+# -----------------------------
 WORKDIR /app
 
-# ---- System security updates (reduce CVEs slightly) ----
-RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends curl && \
-    rm -rf /var/lib/apt/lists/*
-
-# ---- Dependencies layer (cached) ----
+# -----------------------------
+# Install Dependencies
+# -----------------------------
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt
 
-# ---- Copy source code ----
-COPY src ./src
+# -----------------------------
+# Copy Application
+# -----------------------------
+COPY . .
 
-# ---- Fix permissions ----
+# -----------------------------
+# Change Ownership
+# -----------------------------
 RUN chown -R appuser:appuser /app
 
 USER appuser
 
-# ---- Security: explicit port ----
-EXPOSE 8002
+# -----------------------------
+# Expose Port
+# -----------------------------
+EXPOSE 8000
 
-# ---- Runtime ----
-CMD ["uvicorn", "src.appointment_service.main:app", "--host", "0.0.0.0", "--port", "8002"]
+# -----------------------------
+# Health Check
+# -----------------------------
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+CMD curl -f http://localhost:8000/health || exit 1
+
+# -----------------------------
+# Start Application
+# -----------------------------
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
